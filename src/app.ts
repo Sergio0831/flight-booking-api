@@ -1,19 +1,8 @@
 import express, { Request, Response } from 'express';
 import { Duffel, DuffelError } from '@duffel/api';
 import cors from 'cors';
-import axios from 'axios';
-import {
-  DuffelResponse,
-  Offer,
-  OfferRequest,
-  OfferSlice,
-  CreateOfferRequest,
-  Aircraft,
-  Airline,
-  Airport,
-  CreateOfferRequestPassenger,
-} from '@duffel/api/types';
-import { OfferRequestData } from './lib/definitions';
+import { CreateOfferRequest, CreateOfferRequestPassenger } from '@duffel/api/types';
+import { OfferRequestData, OrderRequestData } from './lib/definitions';
 
 require('dotenv').config();
 
@@ -33,7 +22,7 @@ app.get('/', (req: Request, res: Response) => {
   });
 });
 
-app.post('/api/offers', async (req: Request<{}, {}, OfferRequestData>, res: Response) => {
+app.post('/api/offer_requests', async (req: Request<{}, {}, OfferRequestData>, res: Response) => {
   const { tripType, destination, from, formatedDepartDate, formatedReturnDate, adults, children } =
     req.body;
   const passengers: CreateOfferRequestPassenger[] = [];
@@ -82,17 +71,16 @@ app.post('/api/offers', async (req: Request<{}, {}, OfferRequestData>, res: Resp
         title: error.errors[0].title,
         message: error.errors[0].message,
       });
-      console.log(error);
     }
   }
 });
 
-app.get('/api/offers/:offerId', async (req: Request, res: Response) => {
-  const { offerId } = req.params;
+app.get('/api/offers/:offerRequestId', async (req: Request, res: Response) => {
+  const { offerRequestId } = req.params;
 
   try {
     const response = await duffel.offers.list({
-      offer_request_id: offerId,
+      offer_request_id: offerRequestId,
       limit: 5,
       sort: 'total_amount',
     });
@@ -100,7 +88,6 @@ app.get('/api/offers/:offerId', async (req: Request, res: Response) => {
     const offers = response.data.map((offer) => {
       return {
         id: offer.id,
-        airlineLogo: offer.owner.logo_symbol_url,
         totalAmount: offer.total_amount,
         totalCurrency: offer.total_currency,
         passengers: offer.passengers.map((pass) => ({
@@ -109,11 +96,13 @@ app.get('/api/offers/:offerId', async (req: Request, res: Response) => {
         })),
         slices: offer.slices.map((slice) => {
           return {
+            sliceId: slice.id,
             duration: slice.duration,
             origin: slice.origin.iata_city_code,
             destination: slice.destination.iata_city_code,
             segments: slice.segments.map((segment) => {
               return {
+                segmentId: segment.id,
                 departingAt: segment.departing_at,
                 arrivingAt: segment.arriving_at,
                 airlineLogo: segment.marketing_carrier.logo_symbol_url,
@@ -131,33 +120,98 @@ app.get('/api/offers/:offerId', async (req: Request, res: Response) => {
         title: error.errors[0].title,
         message: error.errors[0].message,
       });
-      console.log(error);
+    }
+  }
+});
+
+app.get('/api/offer/:offerId', async (req: Request, res: Response) => {
+  const { offerId } = req.params;
+
+  try {
+    const response = await duffel.offers.get(offerId);
+
+    res.json({ passengers: response.data.passengers });
+  } catch (error) {
+    if (error instanceof DuffelError) {
+      res.json({
+        title: error.errors[0].title,
+        message: error.errors[0].message,
+      });
+    }
+  }
+});
+
+app.post('/api/orders', async (req: Request<{}, {}, OrderRequestData>, res: Response) => {
+  const { selectedOffer, passengers } = req.body;
+
+  try {
+    const response = await duffel.orders.create({
+      passengers: passengers.map((pass) => {
+        return {
+          phone_number: '+442080160509',
+          email: 'example@example.com',
+          born_on: pass.bornOn,
+          title: pass.title,
+          gender: pass.gender,
+          given_name: pass.firstName,
+          family_name: pass.familyName,
+          id: pass.id,
+        };
+      }),
+      selected_offers: [selectedOffer],
+      type: 'pay_later',
+    });
+
+    res.json(response.data.id);
+  } catch (error) {
+    if (error instanceof DuffelError) {
+      res.json({
+        title: error.errors[0].title,
+        message: error.errors[0].message,
+      });
+    }
+  }
+});
+
+app.get('/api/orders/:orderId', async (req: Request, res: Response) => {
+  const { orderId } = req.params;
+
+  try {
+    const response = await duffel.orders.get(orderId);
+    const order = {
+      totalAmount: response.data.total_amount,
+      totalCurrency: response.data.total_currency,
+      passengers: response.data.passengers.map((pass) => ({
+        id: pass.id,
+        title: pass.title,
+        firstName: pass.given_name,
+        familyName: pass.family_name,
+        dob: pass.born_on,
+        gender: pass.gender,
+      })),
+      slices: response.data.slices.map((slice) => ({
+        sliceId: slice.id,
+        duration: slice.duration,
+        origin: slice.origin.iata_city_code,
+        destination: slice.destination.iata_city_code,
+        segments: slice.segments.map((segment) => ({
+          segmentId: segment.id,
+          departingAt: segment.departing_at,
+          arrivingAt: segment.arriving_at,
+          airlineLogo: segment.marketing_carrier.logo_symbol_url,
+        })),
+      })),
+    };
+
+    res.json({ order });
+  } catch (error) {
+    if (error instanceof DuffelError) {
+      res.json({
+        title: error.errors[0].title,
+        message: error.errors[0].message,
+      });
     }
   }
 });
 
 export default app;
-
-//   try {
-//     // const response = await duffel.aircraft.get('arc_00009VMF8AhXSSRnQDI6Hi');
-//     // const response = await duffel.airlines.get('arl_00009VME7DAyfgJ6qz2UAH');
-//     // const response = await duffel.airlines.list({
-//     //   limit: 10,
-//     // });
-//     // const response = await duffel.airports.list({
-//     //   limit: 10,
-//     // });
-//     const response = await duffel.offerRequests.get(
-//       '"orq_0000AcVElZQ3y6MQoDCyUS',
-//     );
-//     // const aircraft: Aircraft = response.data;
-//     // const airline = response.data;
-//     // const airports: OfferRequest = response.data;
-//     // const airlines: Airline[] = response.data;
-//     res.json(response.data);
-//   } catch (error) {
-//     if (error instanceof DuffelError) {
-//       console.log(error.errors[0].message);
-//       // console.error('Error to get aircraft:', error.message || error);
-//     }
-//   }

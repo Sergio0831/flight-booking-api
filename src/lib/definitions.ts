@@ -7,3 +7,15 @@ export interface OfferRequestData {
   adults: string;
   children: string;
 }
+
+export interface OrderRequestData {
+  selectedOffer: string;
+  passengers: {
+    id: string;
+    bornOn: string;
+    title: 'mr' | 'ms' | 'mrs' | 'MR' | 'MS' | 'MRS';
+    gender: 'm' | 'f';
+    firstName: string;
+    familyName: string;
+  }[];
+}
